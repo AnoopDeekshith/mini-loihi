@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+*.vcd
+*.fst
+*.log
+*.o
+work/
+*.hex
+!hardware/mem/*.hex

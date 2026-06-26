@@ -1,0 +1,30 @@
+# Yosys synthesis script for mini-loihi (snn_top)
+# Synthesizes the RTL to a Sky130 gate-level netlist.
+#
+# Usage: yosys physical/synth/synth.ys
+
+# --- Read RTL ---
+read_verilog hardware/rtl/timestep_ctrl.v
+read_verilog hardware/rtl/weight_rom.v
+read_verilog hardware/rtl/synapse_acc.v
+read_verilog hardware/rtl/lif_core.v
+read_verilog hardware/rtl/spike_router.v
+read_verilog hardware/rtl/snn_top.v
+
+# --- Elaborate ---
+hierarchy -check -top snn_top
+
+# --- Generic synthesis ---
+synth -top snn_top
+
+# --- Technology mapping to Sky130 ---
+# TODO: set $SKY130_LIB to the Sky130 standard-cell liberty file.
+# dfflibmap -liberty $SKY130_LIB
+# abc -liberty $SKY130_LIB
+
+# --- Cleanup + reports ---
+opt_clean
+stat
+
+# --- Write gate-level netlist ---
+write_verilog physical/synth/snn_top_netlist.v
