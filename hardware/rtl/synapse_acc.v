@@ -26,10 +26,13 @@ module synapse_acc #(
     input  wire                tick,           // from timestep_ctrl
     input  wire [N_PRE-1:0]    spike_in,       // 1 spike bit per presynaptic neuron
     input  wire [DATA_W-1:0]   weight_data,    // from weight_rom (one weight/cycle)
-    output reg  [PRE_AW-1:0]   weight_addr_pre,
-    output reg  [POST_AW-1:0]  weight_addr_post,
-    output reg  [ACC_W-1:0]    I_syn [0:N_POST-1],
-    output reg                 acc_done        // 1-cycle pulse: I_syn valid
+    output reg  [PRE_AW-1:0]      weight_addr_pre,
+    output reg  [POST_AW-1:0]     weight_addr_post,
+    // I_syn is a flattened packed vector of N_POST accumulators (ACC_W each),
+    // post-neuron k occupying bits [k*ACC_W +: ACC_W]. Flattened (rather than an
+    // unpacked array port) so the design is synthesizable by Yosys.
+    output reg  [N_POST*ACC_W-1:0] I_syn,
+    output reg                    acc_done     // 1-cycle pulse: I_syn valid
 );
 
     localparam NPAIRS  = N_PRE * N_POST;           // 32
@@ -66,7 +69,7 @@ module synapse_acc #(
             s1_spike <= 1'b0; s2_spike <= 1'b0;
             s1_post  <= {POST_AW{1'b0}}; s2_post <= {POST_AW{1'b0}};
             for (j = 0; j < N_POST; j = j + 1)
-                I_syn[j] <= {ACC_W{1'b0}};
+                I_syn[j*ACC_W +: ACC_W] <= {ACC_W{1'b0}};
         end else begin
             acc_done <= 1'b0;   // default: pulse
 
@@ -74,7 +77,7 @@ module synapse_acc #(
                 IDLE: begin
                     if (tick) begin
                         for (j = 0; j < N_POST; j = j + 1)
-                            I_syn[j] <= {ACC_W{1'b0}};
+                            I_syn[j*ACC_W +: ACC_W] <= {ACC_W{1'b0}};
                         cnt      <= {CW{1'b0}};
                         s1_valid <= 1'b0;
                         s2_valid <= 1'b0;
@@ -85,7 +88,8 @@ module synapse_acc #(
                 ACCUMULATE: begin
                     // (1) Accumulate the weight that has now arrived (matches s2).
                     if (s2_valid && s2_spike)
-                        I_syn[s2_post] <= I_syn[s2_post] + w_ext;
+                        I_syn[s2_post*ACC_W +: ACC_W] <=
+                            I_syn[s2_post*ACC_W +: ACC_W] + w_ext;
 
                     // (2) Shift the metadata pipeline s1 -> s2.
                     s2_valid <= s1_valid;

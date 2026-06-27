@@ -1,30 +1,31 @@
-# Yosys synthesis script for mini-loihi (snn_top)
-# Synthesizes the RTL to a Sky130 gate-level netlist.
+# Mini Loihi SNN Processor — Yosys Synthesis Script
+# Target: Sky130 standard cell library
 #
-# Usage: yosys physical/synth/synth.ys
+# RTL uses SystemVerilog (unpacked array ports, '0 literals), so read with -sv.
 
-# --- Read RTL ---
-read_verilog hardware/rtl/timestep_ctrl.v
-read_verilog hardware/rtl/weight_rom.v
-read_verilog hardware/rtl/synapse_acc.v
-read_verilog hardware/rtl/lif_core.v
-read_verilog hardware/rtl/spike_router.v
-read_verilog hardware/rtl/snn_top.v
+# Read all RTL sources
+read_verilog -sv hardware/rtl/timestep_ctrl.v
+read_verilog -sv hardware/rtl/weight_rom.v
+read_verilog -sv hardware/rtl/synapse_acc.v
+read_verilog -sv hardware/rtl/lif_core.v
+read_verilog -sv hardware/rtl/spike_router.v
+read_verilog -sv hardware/rtl/snn_top.v
 
-# --- Elaborate ---
+# Elaborate and check
 hierarchy -check -top snn_top
+proc
+opt
 
-# --- Generic synthesis ---
+# Technology-independent synthesis
 synth -top snn_top
 
-# --- Technology mapping to Sky130 ---
-# TODO: set $SKY130_LIB to the Sky130 standard-cell liberty file.
-# dfflibmap -liberty $SKY130_LIB
-# abc -liberty $SKY130_LIB
-
-# --- Cleanup + reports ---
-opt_clean
+# Report pre-mapping stats
 stat
 
-# --- Write gate-level netlist ---
-write_verilog physical/synth/snn_top_netlist.v
+# Write generic netlist (no PDK needed for this step)
+write_verilog -noattr physical/synth/snn_top_synth.v
+
+# Optional: if Sky130 lib is available, enable this:
+# dfflibmap -liberty path/to/sky130_fd_sc_hd__tt_025C_1v80.lib
+# abc -liberty path/to/sky130_fd_sc_hd__tt_025C_1v80.lib
+# write_verilog physical/synth/snn_top_mapped.v

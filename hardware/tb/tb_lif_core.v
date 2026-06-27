@@ -17,11 +17,11 @@ module tb_lif_core ();
     reg                clk;
     reg                rst_n;
     reg                acc_done;
-    reg  [DATA_W-1:0]  isyn  [0:N-1];
+    reg  [N*DATA_W-1:0] isyn;            // flattened: neuron k at [k*DATA_W +: DATA_W]
     reg  [DATA_W-1:0]  beta;
     reg  [DATA_W-1:0]  theta;
     wire [N-1:0]       spike_out;
-    wire [DATA_W-1:0]  V_mem [0:N-1];
+    wire [N*DATA_W-1:0] V_mem;           // flattened
 
     integer errors = 0;
     reg     fired;
@@ -45,12 +45,13 @@ module tb_lif_core ();
     task do_step;
         input [DATA_W-1:0] cur;
         begin
-            for (n = 0; n < N; n = n + 1) isyn[n] = cur;
+            for (n = 0; n < N; n = n + 1) isyn[n*DATA_W +: DATA_W] = cur;
             @(negedge clk); acc_done = 1'b1;
             @(posedge clk);                 // neuron updates here
             @(negedge clk); acc_done = 1'b0;
             $display("  I=0x%04h  V_mem[0]=0x%04h (%0d)  spike=%b",
-                     cur, V_mem[0], $signed(V_mem[0]), spike_out[0]);
+                     cur, V_mem[0 +: DATA_W], $signed(V_mem[0 +: DATA_W]),
+                     spike_out[0]);
             if (spike_out[0]) fired = 1'b1;
         end
     endtask
@@ -68,7 +69,7 @@ module tb_lif_core ();
         beta     = 16'h00E6;   // ~0.9
         theta    = 16'h0100;   // 1.0
         acc_done = 1'b0;
-        for (n = 0; n < N; n = n + 1) isyn[n] = 16'h0000;
+        for (n = 0; n < N; n = n + 1) isyn[n*DATA_W +: DATA_W] = 16'h0000;
 
         do_reset;
 

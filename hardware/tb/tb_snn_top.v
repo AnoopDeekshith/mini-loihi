@@ -16,7 +16,7 @@ module tb_snn_top ();
     reg        rst_n;
     reg  [7:0] spike_bus;
     reg  [7:0] n_steps;
-    wire [7:0] spike_count [0:1];
+    wire [15:0] spike_count;        // flattened: class 0 in [7:0], class 1 in [15:8]
     wire       done;
 
     integer errors = 0;
@@ -82,9 +82,9 @@ module tb_snn_top ();
             wait (done == 1'b1);
             @(negedge clk);
 
-            pred = (spike_count[0] >= spike_count[1]) ? 0 : 1;
+            pred = (spike_count[7:0] >= spike_count[15:8]) ? 0 : 1;
             $display("[%0s] Class 0 spikes: %0d, Class 1 spikes: %0d, Predicted: %0d, Expected: %0d",
-                     name, spike_count[0], spike_count[1], pred, expected);
+                     name, spike_count[7:0], spike_count[15:8], pred, expected);
             if (pred == expected)
                 $display("  PASS: %0s classified as class %0d", name, expected);
             else begin

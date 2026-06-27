@@ -20,12 +20,14 @@ module lif_core #(
 ) (
     input  wire                clk,
     input  wire                rst_n,
-    input  wire                acc_done,                 // I_syn valid this cycle
-    input  wire [DATA_W-1:0]   I_syn  [0:N_NEURON-1],    // synaptic current/neuron
-    input  wire [DATA_W-1:0]   beta,                     // Q8.8 leak factor
-    input  wire [DATA_W-1:0]   theta,                    // Q8.8 firing threshold
-    output reg  [N_NEURON-1:0] spike_out,                // 1 spike bit per neuron
-    output reg  [DATA_W-1:0]   V_mem  [0:N_NEURON-1]     // membrane potential (debug)
+    input  wire                       acc_done,          // I_syn valid this cycle
+    // I_syn and V_mem are flattened packed vectors (neuron k at [k*DATA_W +:
+    // DATA_W]) rather than unpacked array ports, so the design is synthesizable.
+    input  wire [N_NEURON*DATA_W-1:0] I_syn,             // synaptic current/neuron
+    input  wire [DATA_W-1:0]          beta,              // Q8.8 leak factor
+    input  wire [DATA_W-1:0]          theta,             // Q8.8 firing threshold
+    output reg  [N_NEURON-1:0]        spike_out,         // 1 spike bit per neuron
+    output reg  [N_NEURON*DATA_W-1:0] V_mem              // membrane potential (debug)
 );
 
     localparam FRAC_BITS = 8;
@@ -44,13 +46,13 @@ module lif_core #(
         if (!rst_n) begin
             spike_out <= {N_NEURON{1'b0}};
             for (i = 0; i < N_NEURON; i = i + 1)
-                V_mem[i] <= {DATA_W{1'b0}};
+                V_mem[i*DATA_W +: DATA_W] <= {DATA_W{1'b0}};
         end else if (acc_done) begin
             bta_s = beta;
             th_s  = theta;
             for (i = 0; i < N_NEURON; i = i + 1) begin
-                vm     = V_mem[i];
-                isyn_i = I_syn[i];
+                vm     = V_mem[i*DATA_W +: DATA_W];
+                isyn_i = I_syn[i*DATA_W +: DATA_W];
                 // Q8.8 multiply: keep bits [DATA_W+FRAC_BITS-1 : FRAC_BITS].
                 prod   = vm * bta_s;
                 v_leak = prod[DATA_W+FRAC_BITS-1 -: DATA_W];
@@ -60,14 +62,14 @@ module lif_core #(
                 // $signed() forces a signed compare: a concatenation is
                 // unsigned, which would wrongly promote a negative v_new.
                 if ($signed(v_new) >= $signed({th_s[DATA_W-1], th_s})) begin
-                    spike_out[i] <= 1'b1;             // fire
-                    V_mem[i]     <= {DATA_W{1'b0}};   // reset
+                    spike_out[i]              <= 1'b1;             // fire
+                    V_mem[i*DATA_W +: DATA_W] <= {DATA_W{1'b0}};   // reset
                 end else if (v_new < 0) begin
-                    spike_out[i] <= 1'b0;
-                    V_mem[i]     <= {DATA_W{1'b0}};   // underflow clamp
+                    spike_out[i]              <= 1'b0;
+                    V_mem[i*DATA_W +: DATA_W] <= {DATA_W{1'b0}};   // underflow clamp
                 end else begin
-                    spike_out[i] <= 1'b0;
-                    V_mem[i]     <= v_new[DATA_W-1:0];
+                    spike_out[i]              <= 1'b0;
+                    V_mem[i*DATA_W +: DATA_W] <= v_new[DATA_W-1:0];
                 end
             end
         end

@@ -21,7 +21,10 @@ module snn_top (
     input  wire        rst_n,
     input  wire [7:0]  spike_in_bus,     // 8 input neurons (1 bit each)
     input  wire [7:0]  n_steps,          // number of timesteps (e.g. 20)
-    output reg  [7:0]  spike_count [0:1], // spike count per output neuron
+    // spike_count: per-output-neuron count, flattened — class 0 in [7:0],
+    // class 1 in [15:8] (packed vector instead of an unpacked array port so the
+    // top level is synthesizable).
+    output reg  [15:0] spike_count,
     output reg         done              // high after n_steps complete
 );
 
@@ -38,7 +41,7 @@ module snn_top (
     reg               l1_tick;
     wire [2:0]        l1_addr_pre;
     wire [1:0]        l1_addr_post;
-    wire [L1_ACC_W-1:0] isyn_l1 [0:3];
+    wire [4*L1_ACC_W-1:0] isyn_l1;        // flattened: neuron k at [k*L1_ACC_W +: L1_ACC_W]
     wire              l1_acc_done;
     wire [15:0]       l1_weight_data;
 
@@ -65,13 +68,13 @@ module snn_top (
 
     // Narrow the 19-bit accumulator to 16-bit Q8.8 for the LIF (values are
     // small: |sum of <=8 weights with |w|<1| << 16-bit range).
-    wire [15:0] isyn_l1_16 [0:3];
-    wire [3:0]  spike_l1;
-    wire [15:0] vmem_l1 [0:3];
+    wire [4*16-1:0] isyn_l1_16;          // flattened, 16-bit per neuron
+    wire [3:0]      spike_l1;
+    wire [4*16-1:0] vmem_l1;             // flattened
     genvar i1;
     generate
         for (i1 = 0; i1 < 4; i1 = i1 + 1) begin : narrow_l1
-            assign isyn_l1_16[i1] = isyn_l1[i1][15:0];
+            assign isyn_l1_16[i1*16 +: 16] = isyn_l1[i1*L1_ACC_W +: 16];
         end
     endgenerate
 
@@ -109,7 +112,7 @@ module snn_top (
 
     wire [1:0]        l2_addr_pre;
     wire [0:0]        l2_addr_post;
-    wire [L2_ACC_W-1:0] isyn_l2 [0:1];
+    wire [2*L2_ACC_W-1:0] isyn_l2;        // flattened: neuron k at [k*L2_ACC_W +: L2_ACC_W]
     wire              l2_acc_done;
     wire [15:0]       l2_weight_data;
 
@@ -134,13 +137,13 @@ module snn_top (
         .acc_done         (l2_acc_done)
     );
 
-    wire [15:0] isyn_l2_16 [0:1];
-    wire [1:0]  spike_l2;
-    wire [15:0] vmem_l2 [0:1];
+    wire [2*16-1:0] isyn_l2_16;          // flattened, 16-bit per neuron
+    wire [1:0]      spike_l2;
+    wire [2*16-1:0] vmem_l2;             // flattened
     genvar i2;
     generate
         for (i2 = 0; i2 < 2; i2 = i2 + 1) begin : narrow_l2
-            assign isyn_l2_16[i2] = isyn_l2[i2][15:0];
+            assign isyn_l2_16[i2*16 +: 16] = isyn_l2[i2*L2_ACC_W +: 16];
         end
     endgenerate
 
@@ -199,8 +202,7 @@ module snn_top (
             adv            <= 1'b0;
             done           <= 1'b0;
             spike_in_l1    <= 8'd0;
-            spike_count[0] <= 8'd0;
-            spike_count[1] <= 8'd0;
+            spike_count    <= 16'd0;
         end else begin
             // Default deassert of one-cycle pulses.
             l1_tick    <= 1'b0;
@@ -250,10 +252,10 @@ module snn_top (
 
                 // Accumulate output spikes, then advance the timestep counter.
                 S_COUNT: begin
-                    spike_count[0] <= spike_count[0] + {7'd0, spike_l2[0]};
-                    spike_count[1] <= spike_count[1] + {7'd0, spike_l2[1]};
-                    adv            <= 1'b1;        // enable timestep_ctrl 1 cycle
-                    state          <= S_CHECK;
+                    spike_count[7:0]  <= spike_count[7:0]  + {7'd0, spike_l2[0]};
+                    spike_count[15:8] <= spike_count[15:8] + {7'd0, spike_l2[1]};
+                    adv               <= 1'b1;     // enable timestep_ctrl 1 cycle
+                    state             <= S_CHECK;
                 end
 
                 // `adv` is high this cycle, so timestep_ctrl advances at the

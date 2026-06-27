@@ -27,7 +27,7 @@ module tb_synapse_acc ();
     wire [PRE_AW-1:0]  weight_addr_pre;
     wire [POST_AW-1:0] weight_addr_post;
     wire               acc_done;
-    wire [ACC_W-1:0]   I_syn [0:N_POST-1];
+    wire [N_POST*ACC_W-1:0] I_syn;            // flattened: post k at [k*ACC_W +: ACC_W]
 
     // --- Hardcoded weight ROM (registered, 1-cycle latency) ---
     reg  signed [DATA_W-1:0] W [0:NPAIRS-1];
@@ -125,11 +125,12 @@ module tb_synapse_acc ();
         end
 
         for (j = 0; j < N_POST; j = j + 1) begin
-            if ($signed(I_syn[j]) === expected[j])
-                $display("PASS: I_syn[%0d] = %0d", j, $signed(I_syn[j]));
+            if ($signed(I_syn[j*ACC_W +: ACC_W]) === expected[j])
+                $display("PASS: I_syn[%0d] = %0d", j,
+                         $signed(I_syn[j*ACC_W +: ACC_W]));
             else begin
                 $display("FAIL: I_syn[%0d] = %0d, expected %0d",
-                         j, $signed(I_syn[j]), expected[j]);
+                         j, $signed(I_syn[j*ACC_W +: ACC_W]), expected[j]);
                 errors = errors + 1;
             end
         end
