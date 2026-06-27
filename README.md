@@ -11,7 +11,7 @@ A miniature Loihi-style spiking neural network processor built from scratch.
 | Phase | Goal | Status |
 |-------|------|--------|
 | 0 | Environment setup + first spike | 🔲 |
-| 1 | Train SNN + export weights | 🔲 |
+| 1 | Train SNN + export weights | ✅ |
 | 2 | RTL — 5 Verilog modules | 🔲 |
 | 3 | Integration testbench | 🔲 |
 | 4 | Physical implementation | 🔲 |

@@ -1,0 +1,14 @@
+{
+  "layer1": {
+    "beta": 0.9,
+    "threshold": 1.0,
+    "n_in": 8,
+    "n_out": 4
+  },
+  "layer2": {
+    "beta": 0.9,
+    "threshold": 1.0,
+    "n_in": 4,
+    "n_out": 2
+  }
+}
