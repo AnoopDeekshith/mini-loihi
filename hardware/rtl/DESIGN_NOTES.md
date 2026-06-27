@@ -78,12 +78,24 @@ In a real Loihi-scale device the router becomes a **mesh network-on-chip**:
 
 ## Top-level control (`snn_top`)
 
-The spec's `timestep_ctrl` is a free-running per-cycle counter, but one timestep
-of compute here spans many cycles (serial `synapse_acc`). So `snn_top` runs a
-**master FSM** that sequences each timestep's datapath via the modules'
-`acc_done` / `route_valid` handshakes, and advances `timestep_ctrl` once per
-completed timestep using an `adv` pulse as its clock. This makes `timestep_ctrl`
-genuinely count *completed* timesteps and produce `done`.
+One timestep of compute here spans many cycles (serial `synapse_acc`), so
+`snn_top` runs a **master FSM** that sequences each timestep's datapath via the
+modules' `acc_done` / `route_valid` handshakes:
+
+```
+S_START -> S_L1_WAIT -> S_ROUTE -> S_ROUTE_WAIT -> S_L2_WAIT
+        -> S_LIF2_WAIT -> S_COUNT -> S_CHECK -> S_DECIDE -> (loop / S_FINISH)
+```
+
+`S_START` latches the timestep's input spikes and kicks off layer 1; each
+`*_WAIT` state blocks on a module's done/valid handshake; `S_COUNT` accumulates
+the output spikes and pulses `adv`.
+
+`timestep_ctrl` runs on the **main clock** with `adv` as a **clock-enable** (one
+pulse per completed timestep) — no gated/derived clock. Because `adv` and the
+counter share the main clock, `S_CHECK` lets the counter advance and `S_DECIDE`
+reads the now-stable `tc_done` one cycle later (avoiding a same-edge race). This
+makes `timestep_ctrl` genuinely count *completed* timesteps and produce `done`.
 
 LIF `spike_out` and `V_mem` are **held** between updates (they only change on
 `acc_done`), which keeps downstream capture timing simple — the membrane state
@@ -91,18 +103,15 @@ persists across timesteps exactly like snnTorch's stateful `Leaky` neuron.
 
 ## Known limitations
 
-1. **`adv` is a derived/gated clock.** Driving `timestep_ctrl` from a logic-
-   generated pulse is fine for simulation and this project, but a production
-   design would use a clock enable on the main clock instead of a second clock.
-2. **`spike_count` width.** Declared 8-bit per output neuron (the spec's 2-bit
+1. **`spike_count` width.** Declared 8-bit per output neuron (the spec's 2-bit
    field cannot hold ~20-step counts). Argmax of the two counters gives the
    class.
-3. **Accumulator narrowing.** `synapse_acc`'s 18/19-bit `I_syn` is truncated to
+2. **Accumulator narrowing.** `synapse_acc`'s 18/19-bit `I_syn` is truncated to
    16-bit for `lif_core`. Safe here because |sum of ≤8 weights with |w|<1| stays
    well inside 16-bit range; a larger network should saturate instead.
-4. **Fixed `beta`/`theta`.** Hardwired to 0x00E6 / 0x0100 in `snn_top` rather
+3. **Fixed `beta`/`theta`.** Hardwired to 0x00E6 / 0x0100 in `snn_top` rather
    than loaded from `neuron_cfg.hex` (the file is exported but not yet consumed
    by the RTL).
-5. **No bias.** The trained network is bias-free, matching `nn.Linear(bias=False)`.
-6. **Throughput.** ~55 cycles/timestep, ~20 timesteps per inference. Optimized
+4. **No bias.** The trained network is bias-free, matching `nn.Linear(bias=False)`.
+5. **Throughput.** ~55 cycles/timestep, ~20 timesteps per inference. Optimized
    for area and clarity, not latency.

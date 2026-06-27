@@ -10,6 +10,7 @@ module tb_timestep_ctrl ();
 
     reg        clk;
     reg        rst_n;
+    reg        en;
     reg  [7:0] n_steps;
     wire       tick;
     wire       done;
@@ -23,6 +24,7 @@ module tb_timestep_ctrl ();
     timestep_ctrl dut (
         .clk        (clk),
         .rst_n      (rst_n),
+        .en         (en),
         .n_steps    (n_steps),
         .tick       (tick),
         .done       (done),
@@ -79,7 +81,22 @@ module tb_timestep_ctrl ();
     initial begin
         n_steps = 8'd5;
         rst_n   = 1'b0;
+        en      = 1'b0;
         #12 rst_n = 1'b1;   // deassert reset after ~1 cycle
+
+        // Enable-hold check: with en=0 the counter must not advance.
+        repeat (4) @(negedge clk);
+        if (tick_count == 0 && step_count == 8'd0)
+            $display("PASS: counter held while en=0");
+        else begin
+            $display("FAIL: counter advanced while en=0 (ticks=%0d, step=%0d)",
+                     tick_count, step_count);
+            errors = errors + 1;
+        end
+
+        // Enable free-running advance for the rest of the run.
+        @(negedge clk);
+        en = 1'b1;
 
         // Safety timeout.
         #1000;

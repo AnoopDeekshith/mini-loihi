@@ -8,12 +8,11 @@
 // then advances timestep_ctrl. After n_steps timesteps `done` asserts and the
 // per-output-neuron spike counts are valid; argmax(spike_count) is the class.
 //
-// NOTE on control: the spec's timestep_ctrl is a free-running per-cycle counter,
-// but each timestep here takes many cycles (synapse_acc is serial, ~36 cycles).
-// So the FSM drives the heavy modules via their done/valid handshakes and uses
-// `adv` (one pulse per completed timestep) as timestep_ctrl's clock, so
-// timestep_ctrl genuinely counts *completed* timesteps and produces `done`.
-// (This makes `adv` a derived clock — fine for this project; see DESIGN_NOTES.)
+// NOTE on control: each timestep here takes many cycles (synapse_acc is serial,
+// ~36 cycles), so the FSM drives the heavy modules via their done/valid
+// handshakes and pulses `adv` once per completed timestep. timestep_ctrl runs on
+// the main clock with `adv` as its clock-enable (no gated clock), so it counts
+// *completed* timesteps and produces `done`.
 
 `default_nettype none
 
@@ -157,7 +156,7 @@ module snn_top (
     );
 
     // ---------------------------------------------------------------
-    // Timestep counter (clocked once per completed timestep via `adv`)
+    // Timestep counter (main clock; `adv` enables one step per timestep)
     // ---------------------------------------------------------------
     reg          adv;
     wire         tc_tick;
@@ -165,8 +164,9 @@ module snn_top (
     wire [7:0]   tc_step;
 
     timestep_ctrl tc (
-        .clk        (adv),
+        .clk        (clk),
         .rst_n      (rst_n),
+        .en         (adv),
         .n_steps    (n_steps),
         .tick       (tc_tick),
         .done       (tc_done),
@@ -186,7 +186,8 @@ module snn_top (
         S_LIF2_WAIT = 4'd6,
         S_COUNT     = 4'd7,
         S_CHECK     = 4'd8,
-        S_FINISH    = 4'd9;
+        S_DECIDE    = 4'd9,
+        S_FINISH    = 4'd10;
 
     reg [3:0] state;
 
@@ -251,12 +252,18 @@ module snn_top (
                 S_COUNT: begin
                     spike_count[0] <= spike_count[0] + {7'd0, spike_l2[0]};
                     spike_count[1] <= spike_count[1] + {7'd0, spike_l2[1]};
-                    adv            <= 1'b1;        // one timestep complete
+                    adv            <= 1'b1;        // enable timestep_ctrl 1 cycle
                     state          <= S_CHECK;
                 end
 
-                // timestep_ctrl has advanced; check for completion.
+                // `adv` is high this cycle, so timestep_ctrl advances at the
+                // edge leaving S_CHECK; tc_done is read one cycle later.
                 S_CHECK: begin
+                    state <= S_DECIDE;
+                end
+
+                // timestep_ctrl has advanced; tc_done is now stable.
+                S_DECIDE: begin
                     if (tc_done) begin
                         done  <= 1'b1;
                         state <= S_FINISH;
