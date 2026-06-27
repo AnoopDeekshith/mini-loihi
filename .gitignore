@@ -8,5 +8,7 @@ venv/
 *.log
 *.o
 work/
+# compiled iverilog/vvp simulation binaries
+sim/*_sim
 *.hex
 !hardware/mem/*.hex
