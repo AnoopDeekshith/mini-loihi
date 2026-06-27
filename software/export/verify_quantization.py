@@ -43,8 +43,11 @@ def read_hex_weights(path, shape):
             if raw >= 0x8000:           # sign-extend 16-bit two's complement
                 raw -= 0x10000
             vals.append(raw)
-    arr = np.array(vals, dtype=np.float64).reshape(shape) / SCALE
-    return arr.astype(np.float32)
+    # Hex is stored in hardware [pre, post] order (addr = pre*N_POST + post),
+    # so reshape to [in, out] then transpose back to PyTorch's [out, in].
+    out_f, in_f = shape
+    arr = np.array(vals, dtype=np.float64).reshape(in_f, out_f) / SCALE
+    return arr.T.astype(np.float32)
 
 
 def build_quantized_model(ref_model):

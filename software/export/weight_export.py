@@ -54,19 +54,27 @@ def cosine_similarity(a, b):
 
 
 def export_layer(name, weight_float, hex_path):
-    """Quantize one weight matrix, write hex, and report stats. Returns cos sim."""
-    w_int = float_to_q8_8(weight_float)
+    """Quantize one weight matrix, write hex, and report stats. Returns cos sim.
+
+    PyTorch weights are [out, in] = [post, pre]. The hardware (synapse_acc)
+    addresses the ROM row-major as addr = pre*N_POST + post, so it expects
+    weight[post][pre] at that address. We therefore transpose to [pre, post]
+    before raveling, so hex[pre*N_POST+post] == weight[post][pre].
+    """
+    w_hw = weight_float.T          # [in, out] = [pre, post] -> hardware order
+    w_int = float_to_q8_8(w_hw)
     w_deq = q8_8_to_float(w_int)
 
-    # Write row-major, one 4-hex-digit value per line.
+    # Write row-major over [pre, post], one 4-hex-digit value per line.
     lines = [to_hex4(int(v)) for v in w_int.ravel()]
     with open(hex_path, "w") as f:
         f.write("\n".join(lines) + "\n")
 
-    q_err = float(np.mean(np.abs(weight_float - w_deq)))
-    cos = cosine_similarity(weight_float, w_deq)
+    q_err = float(np.mean(np.abs(w_hw - w_deq)))
+    cos = cosine_similarity(w_hw, w_deq)
 
-    print(f"\n[{name}] shape={weight_float.shape}  ->  {hex_path}")
+    print(f"\n[{name}] shape={weight_float.shape} "
+          f"-> hex [pre,post]={w_hw.shape}  ->  {hex_path}")
     print(f"  float weights : min={weight_float.min():+.4f}  "
           f"max={weight_float.max():+.4f}")
     print(f"  Q8.8 raw int  : min={int(w_int.min()):+d}  "
